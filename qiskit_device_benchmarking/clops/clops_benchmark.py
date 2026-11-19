@@ -832,7 +832,15 @@ class clops_benchmark:
             # Newer qiskit-ibm-runtime: executor chunk timing
             chunks = sorted(
                 (
-                    (c.start, c.stop, sum(part.size for part in c.parts))
+                    # part.size counts twirl randomizations (circuit
+                    # executions); convert to shots to match the units of
+                    # ExecutionSpan.size above (CLOPS = K_ss * D * S / T_ss).
+                    (
+                        c.start,
+                        c.stop,
+                        sum(part.size for part in c.parts)
+                        * self.job_attributes["shots"],
+                    )
                     for c in metadata["executor"].chunk_timing
                 ),
                 key=lambda c: c[0],
