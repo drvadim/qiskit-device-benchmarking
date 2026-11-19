@@ -22,7 +22,6 @@ from qiskit.transpiler import CouplingMap
 from qiskit_ibm_runtime import QiskitRuntimeService, Session
 from qiskit_ibm_runtime import SamplerV2 as Sampler
 from qiskit_ibm_runtime import SamplerOptions
-from qiskit_ibm_runtime.options import TwirlingOptions
 from qiskit_ibm_runtime.ibm_backend import Backend
 from qiskit_ibm_runtime.execution_span import ExecutionSpan, ExecutionSpans
 
@@ -597,11 +596,13 @@ def run_twirled(
         return_metadata=True,
         **(circuit_kwargs or {}),
     )
-    twirling_opts = TwirlingOptions(
-        num_randomizations=num_circuits,
-        shots_per_randomization=shots,
-        enable_gates=True,
-    )
+    # A dict is accepted by every SamplerOptions implementation, unlike
+    # TwirlingOptions whose class differs across qiskit-ibm-runtime versions.
+    twirling_opts = {
+        "num_randomizations": num_circuits,
+        "shots_per_randomization": shots,
+        "enable_gates": True,
+    }
     experimental_opts = {"execution": {"fast_parametric_update": True}}
     options = SamplerOptions(twirling=twirling_opts, experimental=experimental_opts)
     if execution_path:
@@ -820,21 +821,40 @@ class clops_benchmark:
         without having to run huge number of circuits"""
 
         result = self.job.result()
-        execution_spans: ExecutionSpans = result.metadata["execution"][
-            "execution_spans"
-        ]
-        spans = execution_spans.sort()
-        span: ExecutionSpan
-        sum_size: int = 0
+        metadata = result.metadata
 
-        for span in spans:
-            sum_size += span.size
+        # (start, stop, size) per sub-job, sorted by start time
+        if "execution" in metadata and "execution_spans" in metadata["execution"]:
+            # Older qiskit-ibm-runtime: ExecutionSpans
+            execution_spans: ExecutionSpans = metadata["execution"]["execution_spans"]
+            chunks = [(sp.start, sp.stop, sp.size) for sp in execution_spans.sort()]
+        elif "executor" in metadata and hasattr(metadata["executor"], "chunk_timing"):
+            # Newer qiskit-ibm-runtime: executor chunk timing
+            chunks = sorted(
+                (
+                    (c.start, c.stop, sum(part.size for part in c.parts))
+                    for c in metadata["executor"].chunk_timing
+                ),
+                key=lambda c: c[0],
+            )
+        else:
+            raise RuntimeError(
+                "Job result metadata has no execution timing information "
+                f"(found keys: {list(metadata)})"
+            )
 
-        end_time_last_sub_job = spans.stop
-        end_time_first_sub_job = spans[0].stop
+        if len(chunks) < 2:
+            raise RuntimeError(
+                "Need at least two sub-jobs to measure steady-state throughput; "
+                "increase num_circuits."
+            )
+
+        sum_size = sum(c[2] for c in chunks)
+        end_time_last_sub_job = max(c[1] for c in chunks)
+        end_time_first_sub_job = chunks[0][1]
 
         clops = round(
-            ((sum_size - spans[0].size) * self.job_attributes["layers"])
+            ((sum_size - chunks[0][2]) * self.job_attributes["layers"])
             / (end_time_last_sub_job - end_time_first_sub_job).total_seconds()
         )
 
