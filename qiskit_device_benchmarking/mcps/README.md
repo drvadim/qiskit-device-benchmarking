@@ -36,7 +36,7 @@ QUEUED
 # The mcps method will calculate the result once the job completes
 # Note this call will block until the result is ready
 print(bench.mcps())
-{'mcps': 3500000, 'num_circuits': 1000, 'shots': 1000, 'total_time_seconds': 0.286}
+{'mcps': 3711, 'mcps_khz': 3.71, 'num_circuits': 1000, 'shots': 1000, 'total_time_seconds': 269.45}
 ```
 
 ## Variations

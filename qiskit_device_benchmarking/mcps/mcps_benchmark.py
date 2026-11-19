@@ -130,7 +130,9 @@ def calculate_mcps(job, num_circuits: int, shots: int, primitive: str = "executo
                    timing API is used.
 
     Returns:
-        A dict with keys: mcps, num_circuits, shots, total_time_seconds.
+        A dict with keys: mcps (circuit executions per second),
+        mcps_khz (the same value in kHz, as listed on the IBM Quantum
+        Platform), num_circuits, shots, total_time_seconds.
     """
     result = job.result()  # block until complete before reading metrics
 
@@ -153,6 +155,7 @@ def calculate_mcps(job, num_circuits: int, shots: int, primitive: str = "executo
 
     return {
         "mcps": round(mcps),
+        "mcps_khz": round(mcps / 1e3, 2),
         "num_circuits": num_circuits,
         "shots": shots,
         "total_time_seconds": total_time,
@@ -172,7 +175,7 @@ class MCPSBenchmark:
 
         service = QiskitRuntimeService()
         bench = MCPSBenchmark(service, "ibm_boston")
-        print(bench.mcps())  # {"mcps": 3500, ...}
+        print(bench.mcps())  # {"mcps": 3711, "mcps_khz": 3.71, ...}
 
     Args:
         service: An authenticated QiskitRuntimeService instance.
@@ -210,6 +213,7 @@ class MCPSBenchmark:
         """Return the MCPS result dict after the job completes.
 
         Returns:
-            Dict with keys: mcps, num_circuits, shots, total_time_seconds.
+            Dict with keys: mcps, mcps_khz, num_circuits, shots,
+            total_time_seconds.
         """
         return calculate_mcps(self.job, self._num_circuits, self._shots, primitive=self._primitive)
