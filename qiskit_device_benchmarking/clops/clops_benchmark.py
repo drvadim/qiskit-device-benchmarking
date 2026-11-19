@@ -572,6 +572,7 @@ def run_twirled(
     num_circuits: int,
     execution_path: str,
     circuit_kwargs: Optional[dict] = None,
+    apply_rep_delay: bool = False,
 ):
     """Run CLOPS letting the Sampler's gate twirling parameterize the circuit.
 
@@ -607,6 +608,8 @@ def run_twirled(
     options = SamplerOptions(twirling=twirling_opts, experimental=experimental_opts)
     if execution_path:
         options.experimental["execution_path"] = execution_path
+    if apply_rep_delay:
+        options.execution.rep_delay = rep_delay
 
     with Session(backend=backend) as session:
         sampler = Sampler(mode=session, options=options)
@@ -631,6 +634,7 @@ def run_parameterized(
     num_circuits: int,
     execution_path: str,
     circuit_kwargs: Optional[dict] = None,
+    apply_rep_delay: bool = False,
 ):
     (transpiled_circ, parameters, metadata) = create_hardware_aware_circuit(
         width=width,
@@ -655,6 +659,8 @@ def run_parameterized(
     options = SamplerOptions(experimental=experimental_opts)
     if execution_path:
         options.experimental["execution_path"] = execution_path
+    if apply_rep_delay:
+        options.execution.rep_delay = rep_delay
 
     with Session(backend=backend) as session:
         sampler = Sampler(mode=session, options=options)
@@ -745,6 +751,9 @@ class clops_benchmark:
 
         # service = QiskitRuntimeService(channel="ibm_quantum")
         backend = service.backend(backend_name)
+        # Only override the runtime's rep_delay when the caller asked for one;
+        # otherwise the system default is used and merely recorded.
+        apply_rep_delay = rep_delay is not None
         if rep_delay is None:
             rep_delay = backend.configuration().default_rep_delay
 
@@ -760,6 +769,7 @@ class clops_benchmark:
                 num_circuits,
                 execution_path,
                 circuit_kwargs,
+                apply_rep_delay,
             )
             self.clops = self._clops_throughput_sampler
         elif circuit_type == "parameterized":
@@ -772,6 +782,7 @@ class clops_benchmark:
                 num_circuits,
                 execution_path,
                 circuit_kwargs,
+                apply_rep_delay,
             )
             self.clops = self._clops_throughput_sampler
         elif circuit_type == "instantiated":
