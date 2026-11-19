@@ -1,0 +1,58 @@
+[
+ {
+  "name": "canonical",
+  "K": 5000,
+  "D": 100,
+  "S": 100,
+  "job_id": "dbve5omps3fc73bkb9ig",
+  "clops": 326831
+ },
+ {
+  "name": "K=2500",
+  "K": 2500,
+  "D": 100,
+  "S": 100,
+  "job_id": "dbve5pv82tmc73dute9g",
+  "clops": 303139
+ },
+ {
+  "name": "K=10000",
+  "K": 10000,
+  "D": 100,
+  "S": 100,
+  "job_id": "dbve5qvf8rhs73bnpg8g",
+  "clops": 323595
+ },
+ {
+  "name": "S=10",
+  "K": 5000,
+  "D": 100,
+  "S": 10,
+  "job_id": "dbve5rups3fc73bkb9q0",
+  "clops": 160909
+ },
+ {
+  "name": "D=25",
+  "K": 5000,
+  "D": 25,
+  "S": 100,
+  "job_id": "dbve5starooc73flebk0",
+  "clops": 85139
+ },
+ {
+  "name": "D=50",
+  "K": 5000,
+  "D": 50,
+  "S": 100,
+  "job_id": "dbve5tnf8rhs73bnpgbg",
+  "clops": 141178
+ },
+ {
+  "name": "D=200",
+  "K": 5000,
+  "D": 200,
+  "S": 100,
+  "job_id": "dbve5vf82tmc73dutei0",
+  "clops": 596433
+ }
+]
