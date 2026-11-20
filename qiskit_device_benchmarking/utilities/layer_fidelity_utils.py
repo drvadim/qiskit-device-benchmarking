@@ -33,6 +33,7 @@ def run_lf_chain(
     seed: int = 42,
     cliff_lengths: list[int] = [1, 10, 20, 30, 40, 60, 80, 100, 150, 200, 400],
     nshots: int = 200,
+    sampler=None,
 ) -> ExperimentData:
     """General function to run LF on a list of chains using default or
     command lie arguments. Note: If one hopes to run LF on a single chain,
@@ -43,6 +44,8 @@ def run_lf_chain(
     - nseeds
     - cliff_lengths
     - nshots
+    - sampler: optional SamplerV2, e.g. one created in a Session, to submit the
+      LF circuits with. By default the experiment creates its own sampler
 
     Returns:
     - List of ExperimentData objects
@@ -109,7 +112,7 @@ def run_lf_chain(
     print(f"{len(circuits)} circuits are generated.")
 
     # Run LF experiment (generate circuits and submit the job)
-    exp_data = lfexp.run(backend, shots=nshots)
+    exp_data = lfexp.run(backend, sampler=sampler, shots=nshots)
     exp_data.auto_save = False
     print(
         f"Runing layer fidelity experiment: ID={exp_data.experiment_id} with jobs {exp_data.job_ids}]"

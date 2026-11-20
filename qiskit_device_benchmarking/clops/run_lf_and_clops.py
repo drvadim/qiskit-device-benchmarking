@@ -8,8 +8,12 @@ suppression and calibration cycle as the LF measurement it is paired with.
 What this script does:
   1. Takes the backend's reported lf_<width> chain (or --qubits) and records the
      backend calibration timestamp.
-  2. Submits the LF job and then the CLOPS repeats immediately, before blocking
-     on any of them, so the jobs are queued together.
+  2. Opens ONE session and runs the LF job and then each CLOPS repeat in it,
+     one at a time: every job is submitted only after the previous one has
+     finished. The session keeps them adjacent (no queue wait between them).
+     Submitting them all at once is wrong: jobs in a session were observed to
+     execute concurrently, and CLOPS measures sustained throughput, so jobs
+     competing for the device give low and scattered values.
   3. Waits for everything, records the calibration timestamp again, and marks
      the window as "same" only if the timestamp never changed.
   4. Reports LF/EPLG for the chain, the median CLOPS over the repeats and the
@@ -29,7 +33,7 @@ import json
 import statistics
 import warnings
 
-from qiskit_ibm_runtime import QiskitRuntimeService
+from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2, Session
 
 import qiskit_device_benchmarking.utilities.layer_fidelity_utils as lfu
 from qiskit_device_benchmarking.clops.clops_benchmark import clops_benchmark
@@ -38,6 +42,12 @@ from qiskit_device_benchmarking.clops.clops_benchmark import clops_benchmark
 def calibration_stamp(backend):
     """Timestamp of the backend's latest calibration properties (fresh fetch)."""
     return str(backend.properties(refresh=True).last_update_date)
+
+
+def job_window(job):
+    """(running, finished) timestamps of a job, as strings."""
+    ts = job.metrics()["timestamps"]
+    return {"running": ts.get("running"), "finished": ts.get("finished")}
 
 
 def plain(value):
@@ -91,17 +101,24 @@ def main():
     print("Chain:", chain)
     print("Calibration at submit:", stamps["before_submit"])
 
-    # Submit the LF job and all CLOPS repeats back to back, then wait.
-    lf_data = lfu.run_lf_chain(
-        chain=chain,
-        backend=backend,
-        nseeds=args.lf_nseeds,
-        nshots=args.lf_nshots,
-    )
+    # Run everything in one session, strictly one job at a time. We wait on each
+    # job (not on its analysis, which can outlast the session's idle timeout)
+    # before submitting the next. close() only stops new submissions.
+    session = Session(backend=backend)
     runs = []
-    for i in range(args.repeats):
-        runs.append(
-            clops_benchmark(
+    try:
+        lf_data = lfu.run_lf_chain(
+            chain=chain,
+            backend=backend,
+            nseeds=args.lf_nseeds,
+            nshots=args.lf_nshots,
+            sampler=SamplerV2(mode=session),
+        )
+        for job in lf_data.jobs():
+            job.result()
+        print("LF job finished")
+        for i in range(args.repeats):
+            run = clops_benchmark(
                 service,
                 args.backend,
                 width=args.width,
@@ -109,10 +126,14 @@ def main():
                 shots=args.shots,
                 num_circuits=args.num_circuits,
                 qubits=chain,
+                session=session,
             )
-        )
-        print(f"Submitted CLOPS repeat {i + 1}/{args.repeats}: {runs[-1].job.job_id()}")
-    stamps["after_submit"] = calibration_stamp(backend)
+            runs.append(run)
+            print(f"Submitted CLOPS repeat {i + 1}/{args.repeats}: {run.job.job_id()}")
+            run.job.result()
+    finally:
+        session.close()
+    stamps["after_runs"] = calibration_stamp(backend)
 
     lf_data.block_for_results()
     clops_values = [r.clops() for r in runs]
@@ -139,7 +160,12 @@ def main():
         "clops_chain_matches_lf_chain": chains_match,
         "lfoc_declared": lfoc,
         "lf": lf_summary(lf_data),
+        "session_id": session.session_id,
         "lf_job_ids": list(lf_data.job_ids),
+        "job_windows": {
+            "lf": [job_window(j) for j in lf_data.jobs()],
+            "clops": [job_window(r.job) for r in runs],
+        },
         "clops_runs": [
             {"job_id": r.job.job_id(), "clops": v} for r, v in zip(runs, clops_values)
         ],

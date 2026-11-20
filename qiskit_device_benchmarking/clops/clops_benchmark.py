@@ -563,6 +563,19 @@ def create_payload(backend, qc, rng, max_experiments):
     return job, max_experiments
 
 
+def _submit(backend, session, options, pubs, **run_kwargs):
+    """Submit pubs to a Sampler, in the caller's session if one is given.
+
+    A caller-supplied session is left open (the caller owns it), so other
+    jobs, e.g. a layer fidelity measurement, can share it and run back to
+    back with this one. Without one, a private session is opened and closed.
+    """
+    if session is not None:
+        return Sampler(mode=session, options=options).run(pubs, **run_kwargs)
+    with Session(backend=backend) as own_session:
+        return Sampler(mode=own_session, options=options).run(pubs, **run_kwargs)
+
+
 def run_twirled(
     backend: Backend,
     width: int,
@@ -573,6 +586,7 @@ def run_twirled(
     execution_path: str,
     circuit_kwargs: Optional[dict] = None,
     apply_rep_delay: bool = False,
+    session: Optional[Session] = None,
 ):
     """Run CLOPS letting the Sampler's gate twirling parameterize the circuit.
 
@@ -611,9 +625,9 @@ def run_twirled(
     if apply_rep_delay:
         options.execution.rep_delay = rep_delay
 
-    with Session(backend=backend) as session:
-        sampler = Sampler(mode=session, options=options)
-        job = sampler.run([transpiled_circ], shots=shots * num_circuits)
+    job = _submit(
+        backend, session, options, [transpiled_circ], shots=shots * num_circuits
+    )
 
     metadata["twirling"] = {
         "enable_gates": True,
@@ -635,6 +649,7 @@ def run_parameterized(
     execution_path: str,
     circuit_kwargs: Optional[dict] = None,
     apply_rep_delay: bool = False,
+    session: Optional[Session] = None,
 ):
     (transpiled_circ, parameters, metadata) = create_hardware_aware_circuit(
         width=width,
@@ -662,9 +677,7 @@ def run_parameterized(
     if apply_rep_delay:
         options.execution.rep_delay = rep_delay
 
-    with Session(backend=backend) as session:
-        sampler = Sampler(mode=session, options=options)
-        job = sampler.run([(transpiled_circ, param_values, shots)])
+    job = _submit(backend, session, options, [(transpiled_circ, param_values, shots)])
 
     metadata["twirling"] = {"enable_gates": False}
     metadata["parameterization"] = "rzsx_3param_per_qubit_per_layer"
@@ -711,6 +724,7 @@ class clops_benchmark:
         qubits: Optional[Sequence[int]] = None,
         layer_order: str = "2q_first",
         lfoc_declared: Optional[bool] = None,
+        session: Optional[Session] = None,
     ):
         """Run CLOPS benchmark through Sampler primitive
 
@@ -747,6 +761,10 @@ class clops_benchmark:
             lfoc_declared: Optional, whether this run satisfies layer fidelity operating
                         conditions. CLOPS does not verify this internally, so it must be
                         declared when reporting a result. Left as None if not stated
+            session: Optional, an open Session to submit the job in. The session is
+                        left open for the caller, so other jobs (e.g. a layer fidelity
+                        measurement) can share it and run back to back with this one.
+                        By default a private session is opened and closed
         """
 
         # service = QiskitRuntimeService(channel="ibm_quantum")
@@ -770,6 +788,7 @@ class clops_benchmark:
                 execution_path,
                 circuit_kwargs,
                 apply_rep_delay,
+                session,
             )
             self.clops = self._clops_throughput_sampler
         elif circuit_type == "parameterized":
@@ -783,6 +802,7 @@ class clops_benchmark:
                 execution_path,
                 circuit_kwargs,
                 apply_rep_delay,
+                session,
             )
             self.clops = self._clops_throughput_sampler
         elif circuit_type == "instantiated":
